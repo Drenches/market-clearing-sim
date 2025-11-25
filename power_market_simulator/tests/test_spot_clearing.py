@@ -1,4 +1,5 @@
 """
+Spot clearing system test cases
 现货出清系统测试用例
 """
 import unittest
@@ -13,18 +14,25 @@ from power_market_simulator.algorithms import create_spot_market_clearing
 
 
 class TestSpotMarketClearing(unittest.TestCase):
-    """现货市场出清系统测试"""
+    """Spot market clearing system test
+    现货市场出清系统测试
+    """
     
     def setUp(self):
-        """设置测试网络"""
+        """Setup test network
+        设置测试网络
+        """
+        # Create test network - a simple 3-bus system
         # 创建测试网络 - 一个简单的3节点系统
         self.network = Network(name="Test3BusSystem")
         
+        # Add 3 nodes
         # 添加3个节点
         self.network.add_node(Node(id="N1", name="Bus 1", x=0, y=0))
         self.network.add_node(Node(id="N2", name="Bus 2", x=1, y=0))
         self.network.add_node(Node(id="N3", name="Bus 3", x=2, y=0))
         
+        # Add generators
         # 添加发电机
         self.network.add_generator(Generator(
             id="G1", 
@@ -46,6 +54,7 @@ class TestSpotMarketClearing(unittest.TestCase):
             marginal_cost=50.0
         ))
         
+        # Add loads
         # 添加负荷
         self.network.add_load(Load(
             id="L1", 
@@ -68,6 +77,7 @@ class TestSpotMarketClearing(unittest.TestCase):
             demand=70.0
         ))
         
+        # Add transmission lines
         # 添加输电线路
         self.network.add_line(TransmissionLine(
             id="L12", 

@@ -1,4 +1,6 @@
 """
+Time series and segment bidding data model
+Extending the original network model to support 24-hour dynamic simulation and segment bidding
 时间序列和分段报价数据模型
 扩展原有的网络模型以支持24小时动态仿真和分段报价
 """
@@ -10,70 +12,90 @@ from power_market_simulator.models.network import Network, Generator, Load, Gene
 
 
 class BidSegment:
-    """分段报价段"""
+    """Segment bidding
+    分段报价段
+    """
     def __init__(self, start_power: float, end_power: float, price: float):
-        self.start_power = start_power  # 段起始出力(MW)
-        self.end_power = end_power      # 段结束出力(MW)
-        self.price = price              # 该段报价(元/MWh)
+        self.start_power = start_power  # Segment start output (MW) / 段起始出力(MW)
+        self.end_power = end_power      # Segment end output (MW) / 段结束出力(MW)
+        self.price = price              # Segment bid price (CNY/MWh) / 该段报价(元/MWh)
     
     def capacity(self) -> float:
-        """返回该段容量"""
+        """Return segment capacity
+        返回该段容量
+        """
         return self.end_power - self.start_power
 
 
 @dataclass
 class TimeSlot:
-    """时间时段"""
-    hour: int  # 小时(0-23)
-    load_factor: float = 1.0  # 负荷因子，用于调整基础负荷
-    renewable_factor: float = 1.0  # 新能源出力因子，用于调整新能源出力
+    """Time slot
+    时间时段
+    """
+    hour: int  # Hour (0-23) / 小时(0-23)
+    load_factor: float = 1.0  # Load factor, used to adjust base load / 负荷因子，用于调整基础负荷
+    renewable_factor: float = 1.0  # Renewable energy output factor, used to adjust renewable output / 新能源出力因子，用于调整新能源出力
 
 
 @dataclass
 class GeneratorTimeSeries:
-    """发电机时序数据"""
+    """Generator time series data
+    发电机时序数据
+    """
     generator_id: str
-    time_slots: List[TimeSlot]  # 24小时数据
-    bid_segments: List[List[BidSegment]]  # 每个时段的分段报价，对非新能源机组
-    original_generator: Generator  # 原始发电机对象
+    time_slots: List[TimeSlot]  # 24-hour data / 24小时数据
+    bid_segments: List[List[BidSegment]]  # Segment bidding for each time slot, for non-renewable units / 每个时段的分段报价，对非新能源机组
+    original_generator: Generator  # Original generator object / 原始发电机对象
     
     def get_available_capacity(self, hour: int) -> float:
-        """获取指定小时的可用容量"""
+        """Get available capacity for specified hour
+        获取指定小时的可用容量
+        """
         if hour < 0 or hour >= 24:
             raise ValueError("小时必须在0-23之间")
         
         time_slot = self.time_slots[hour]
         
         if self.original_generator.generator_type in [GeneratorType.WIND, GeneratorType.SOLAR]:
+            # Renewable units have no segment bidding, output is determined by renewable factor
             # 新能源机组没有分段报价，出力由可再生能源因子决定
             return self.original_generator.max_power * time_slot.renewable_factor
         else:
+            # Traditional units, return maximum output
             # 传统机组，返回最大出力
             return self.original_generator.max_power
     
     def get_bid_segments(self, hour: int) -> List[BidSegment]:
-        """获取指定小时的分段报价"""
+        """Get segment bidding for specified hour
+        获取指定小时的分段报价
+        """
         if hour < 0 or hour >= 24:
             raise ValueError("小时必须在0-23之间")
         
         if self.original_generator.generator_type in [GeneratorType.WIND, GeneratorType.SOLAR]:
+            # Renewable units have no segment bidding, return virtual bidding
             # 新能源机组没有分段报价，返回虚拟报价
             capacity = self.get_available_capacity(hour)
-            return [BidSegment(0, capacity, 0.0)]  # 新能源报价为0
+            return [BidSegment(0, capacity, 0.0)]  # Renewable bidding is 0 / 新能源报价为0
         else:
+            # Traditional units return actual segment bidding
             # 传统机组返回实际分段报价
             return self.bid_segments[hour]
 
 
 @dataclass
 class LoadTimeSeries:
-    """负荷时序数据"""
+    """Load time series data
+    负荷时序数据
+    """
     load_id: str
-    time_slots: List[TimeSlot]  # 24小时数据
-    original_load: Load  # 原始负荷对象
+    time_slots: List[TimeSlot]  # 24-hour data / 24小时数据
+    original_load: Load  # Original load object / 原始负荷对象
     
     def get_demand(self, hour: int) -> float:
-        """获取指定小时的负荷需求"""
+        """Get load demand for specified hour
+        获取指定小时的负荷需求
+        """
         if hour < 0 or hour >= 24:
             raise ValueError("小时必须在0-23之间")
         
@@ -83,13 +105,18 @@ class LoadTimeSeries:
 
 @dataclass
 class DayAheadMarketData:
-    """日前市场数据"""
-    network: Network  # 基础网络结构
-    generator_time_series: Dict[str, GeneratorTimeSeries]  # 发电机时序数据
-    load_time_series: Dict[str, LoadTimeSeries]  # 负荷时序数据
+    """Day-ahead market data
+    日前市场数据
+    """
+    network: Network  # Base network structure / 基础网络结构
+    generator_time_series: Dict[str, GeneratorTimeSeries]  # Generator time series data / 发电机时序数据
+    load_time_series: Dict[str, LoadTimeSeries]  # Load time series data / 负荷时序数据
     
     def get_hourly_network(self, hour: int) -> Network:
-        """获取指定小时的网络状态"""
+        """Get network status for specified hour
+        获取指定小时的网络状态
+        """
+        # Create a copy of the base network
         # 创建基础网络的副本
         hourly_network = Network(
             name=f"{self.network.name}_H{hour:02d}",
@@ -99,6 +126,7 @@ class DayAheadMarketData:
             lines=self.network.lines.copy()
         )
         
+        # Update generator and load time series data
         # 更新发电机和负荷的时序数据
         for gen_id, gen_ts in self.generator_time_series.items():
             if gen_id in hourly_network.generators:
@@ -109,7 +137,7 @@ class DayAheadMarketData:
                     node_id=original_gen.node_id,
                     generator_type=original_gen.generator_type,
                     min_power=original_gen.min_power,
-                    max_power=gen_ts.get_available_capacity(hour),  # 使用时序容量
+                    max_power=gen_ts.get_available_capacity(hour),  # Using time series capacity / 使用时序容量
                     marginal_cost=original_gen.marginal_cost,
                     startup_cost=original_gen.startup_cost,
                     shutdown_cost=original_gen.shutdown_cost,
@@ -117,6 +145,7 @@ class DayAheadMarketData:
                 )
                 hourly_network.generators[gen_id] = new_gen
         
+        # Update load data
         # 更新负荷数据
         for load_id, load_ts in self.load_time_series.items():
             if load_id in hourly_network.loads:
@@ -125,7 +154,7 @@ class DayAheadMarketData:
                     id=original_load.id,
                     name=original_load.name,
                     node_id=original_load.node_id,
-                    demand=load_ts.get_demand(hour),  # 使用时序负荷
+                    demand=load_ts.get_demand(hour),  # Using time series load / 使用时序负荷
                     price_elasticity=original_load.price_elasticity
                 )
                 hourly_network.loads[load_id] = new_load
@@ -133,7 +162,9 @@ class DayAheadMarketData:
         return hourly_network
     
     def get_hourly_bid_data(self, hour: int) -> Dict[str, List[BidSegment]]:
-        """获取指定小时的分段报价数据"""
+        """Get segment bidding data for specified hour
+        获取指定小时的分段报价数据
+        """
         bid_data = {}
         for gen_id, gen_ts in self.generator_time_series.items():
             bid_data[gen_id] = gen_ts.get_bid_segments(hour)
